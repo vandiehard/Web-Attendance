@@ -7,20 +7,23 @@ services:
       MYSQL_USER: attendance
       MYSQL_PASSWORD: attendance
       TZ: UTC
-    ports: ['3306:3306']
-    command: ['--character-set-server=utf8mb4', '--collation-server=utf8mb4_unicode_ci']
+    ports:
+      - "3306:3306"
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci", "--default-time-zone=+00:00"]
     healthcheck:
-      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-uattendance', '-pattendance']
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uattendance", "-pattendance"]
       interval: 5s
       timeout: 5s
       retries: 20
-  minio:
-    image: minio/minio:RELEASE.2024-06-13T19-44-58Z
-    command: server /data --console-address ':9001'
+  mysql-test:
+    image: mysql:8.4
     environment:
-      MINIO_ROOT_USER: minio
-      MINIO_ROOT_PASSWORD: miniosecret
-    ports: ['9000:9000', '9001:9001']
-    volumes: ['minio_data:/data']
-volumes:
-  minio_data:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: attendance_test
+      MYSQL_USER: attendance
+      MYSQL_PASSWORD: attendance
+      TZ: UTC
+    ports:
+      - "3307:3306"
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci", "--default-time-zone=+00:00"]
+    profiles: ["test"]

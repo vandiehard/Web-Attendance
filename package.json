@@ -2,7 +2,10 @@
   "name": "web-attendance",
   "private": true,
   "version": "0.1.0",
-  "workspaces": ["apps/web", "apps/api"],
+  "workspaces": [
+    "apps/web",
+    "apps/api"
+  ],
   "scripts": {
     "dev": "concurrently -k \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
     "build": "npm run build -w apps/api && npm run build -w apps/web",
@@ -11,10 +14,15 @@
     "test": "npm run test -w apps/api && npm run test -w apps/web",
     "db:validate": "prisma validate --schema prisma/schema.prisma",
     "db:migrate": "prisma migrate deploy --schema prisma/schema.prisma",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "db:seed:demo": "cross-env NODE_ENV=development tsx prisma/seed.ts",
+    "demo:reset": "cross-env NODE_ENV=development prisma migrate reset --force --skip-seed && npm run db:seed:demo",
+    "api:start": "node apps/api/dist/main.js",
+        "test:e2e": "playwright test"
   },
   "devDependencies": {
     "concurrently": "9.2.1",
+    "cross-env": "^10.0.0",
     "prisma": "6.16.2",
     "tsx": "4.20.5",
     "typescript": "5.9.2"

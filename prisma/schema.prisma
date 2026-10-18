@@ -3,29 +3,279 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
-  url          = env("DATABASE_URL")
-    shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
-}
-
-model User {
-  id            String        @id @default(cuid())
-  email         String        @unique @db.VarChar(254)
-  passwordHash  String        @db.VarChar(255)
-  role          UserRole      @default(USER)
-  accountStatus AccountStatus @default(PENDING)
-  createdAt     DateTime      @default(now()) @db.DateTime(3)
-  updatedAt     DateTime      @updatedAt @db.DateTime(3)
+  provider          = "mysql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 enum UserRole {
   ADMIN
   USER
 }
-
 enum AccountStatus {
   PENDING
   ACTIVE
   REJECTED
   SUSPENDED
+}
+enum RegistrationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+enum ScheduleStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  CANCELLED
+}
+enum AttendanceType {
+  CHECK_IN
+  CHECK_OUT
+}
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  NEEDS_REVIEW
+  REJECTED
+}
+enum LocationStatus {
+  AVAILABLE
+  UNAVAILABLE
+  LOW_ACCURACY
+  INVALID
+}
+enum EvidenceStatus {
+  PENDING_UPLOAD
+  STORED
+  FAILED
+  QUARANTINED
+  DELETED
+}
+enum CorrectionType {
+  MISSING_CHECK_IN
+  MISSING_CHECK_OUT
+  STATUS_CHANGE
+  OTHER
+}
+enum CorrectionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+enum AttendanceSource {
+  NORMAL
+  MANUAL_CORRECTION
+}
+
+model User {
+  id                 String               @id @default(cuid())
+  email              String               @unique @db.VarChar(254)
+  passwordHash       String               @db.VarChar(255)
+  role               UserRole             @default(USER)
+  accountStatus      AccountStatus        @default(PENDING)
+  emailVerifiedAt    DateTime?            @db.DateTime(3)
+  lastLoginAt        DateTime?            @db.DateTime(3)
+  createdAt          DateTime             @default(now()) @db.DateTime(3)
+  updatedAt          DateTime             @updatedAt @db.DateTime(3)
+  profile            UserProfile?
+  registrations      RegistrationRequest[]
+  sessions           AuthSession[]
+  passwordResetTokens PasswordResetToken[]
+  attendanceRecords  AttendanceRecord[]
+  corrections        AttendanceCorrection[]
+  notifications      Notification[]
+  auditLogs          AuditLog[]
+  schedulesCreated   Schedule[]           @relation("ScheduleCreator")
+  registrationsReviewed RegistrationRequest[] @relation("RegistrationReviewer")
+  correctionsReviewed AttendanceCorrection[] @relation("CorrectionReviewer")
+
+  @@index([accountStatus])
+}
+
+model UserProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  npm         String   @unique @db.VarChar(32)
+  fullName    String   @db.VarChar(120)
+  className   String   @db.VarChar(80)
+  phoneNumber String   @db.VarChar(30)
+  createdAt   DateTime @default(now()) @db.DateTime(3)
+  updatedAt   DateTime @updatedAt @db.DateTime(3)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RegistrationRequest {
+  id              String             @id @default(cuid())
+  userId          String
+  status          RegistrationStatus  @default(PENDING)
+  pendingKey      String?            @db.VarChar(16)
+  submittedAt     DateTime           @default(now()) @db.DateTime(3)
+  reviewedAt      DateTime?          @db.DateTime(3)
+  reviewedById    String?
+  rejectionReason String?            @db.VarChar(500)
+  createdAt       DateTime           @default(now()) @db.DateTime(3)
+  updatedAt       DateTime           @updatedAt @db.DateTime(3)
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy      User?              @relation("RegistrationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  @@unique([userId, pendingKey])
+  @@index([status, submittedAt])
+}
+
+model Schedule {
+  id             String         @id @default(cuid())
+  name           String         @db.VarChar(120)
+  description    String?        @db.VarChar(500)
+  targetClassName String?       @db.VarChar(80)
+  checkInStartAt DateTime       @db.DateTime(3)
+  checkInEndAt   DateTime       @db.DateTime(3)
+  checkOutStartAt DateTime      @db.DateTime(3)
+  checkOutEndAt  DateTime       @db.DateTime(3)
+  lateAfter      DateTime       @db.DateTime(3)
+  status         ScheduleStatus @default(DRAFT)
+  createdById    String
+  createdAt      DateTime       @default(now()) @db.DateTime(3)
+  updatedAt      DateTime       @updatedAt @db.DateTime(3)
+  createdBy      User           @relation("ScheduleCreator", fields: [createdById], references: [id])
+  session        AttendanceSession?
+  @@index([status, checkInStartAt])
+}
+
+model AttendanceSession {
+  id          String             @id @default(cuid())
+  scheduleId  String @unique
+  sessionDate DateTime           @db.DateTime(3)
+  status      ScheduleStatus     @default(DRAFT)
+  createdAt   DateTime            @default(now()) @db.DateTime(3)
+  updatedAt   DateTime            @updatedAt @db.DateTime(3)
+  schedule    Schedule           @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  records     AttendanceRecord[]
+  @@unique([scheduleId, sessionDate])
+  @@index([status, sessionDate])
+}
+
+model AttendanceRecord {
+  id                       String             @id @default(cuid())
+  userId                   String
+  sessionId                String
+  type                     AttendanceType
+  status                   AttendanceStatus
+  source                   AttendanceSource @default(NORMAL)
+  serverTimestamp          DateTime           @db.DateTime(3)
+  receivedAt               DateTime           @db.DateTime(3)
+  latitude                 Decimal?           @db.Decimal(9, 6)
+  longitude                Decimal?           @db.Decimal(9, 6)
+  accuracyMeters           Int?
+  locationStatus           LocationStatus
+  locationCapturedAtClient DateTime?          @db.DateTime(3)
+  photoCapturedAtClient    DateTime?          @db.DateTime(3)
+  idempotencyKey           String             @db.VarChar(64)
+  createdAt                DateTime           @default(now()) @db.DateTime(3)
+  updatedAt                DateTime           @updatedAt @db.DateTime(3)
+  user                     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session                  AttendanceSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  evidence                 AttendanceEvidence?
+  corrections              AttendanceCorrection[]
+  @@unique([userId, sessionId, type])
+  @@unique([userId, idempotencyKey])
+  @@index([serverTimestamp, status])
+}
+
+model AttendanceEvidence {
+  id                 String          @id @default(cuid())
+  attendanceRecordId String          @unique
+  objectKey          String          @db.VarChar(255)
+  mimeType           String          @db.VarChar(80)
+  fileSizeBytes      Int
+  sha256             String          @db.Char(64)
+  uploadedAt         DateTime?       @db.DateTime(3)
+  capturedAtClient   DateTime?       @db.DateTime(3)
+  status             EvidenceStatus  @default(PENDING_UPLOAD)
+  expiresAt          DateTime        @db.DateTime(3)
+  createdAt          DateTime        @default(now()) @db.DateTime(3)
+  attendanceRecord   AttendanceRecord @relation(fields: [attendanceRecordId], references: [id], onDelete: Cascade)
+  @@index([sha256])
+  @@index([expiresAt, status])
+}
+
+model AttendanceCorrection {
+  id              String             @id @default(cuid())
+  attendanceRecordId String?
+  userId          String
+  type            CorrectionType
+  reason          String             @db.VarChar(1000)
+  status          CorrectionStatus   @default(PENDING)
+  previousStatus  AttendanceStatus?
+  newStatus       AttendanceStatus?
+  reviewedById    String?
+  reviewedAt      DateTime?          @db.DateTime(3)
+  reviewNote      String?            @db.VarChar(1000)
+  createdAt       DateTime           @default(now()) @db.DateTime(3)
+  updatedAt       DateTime           @updatedAt @db.DateTime(3)
+  attendanceRecord AttendanceRecord? @relation(fields: [attendanceRecordId], references: [id], onDelete: SetNull)
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy      User?              @relation("CorrectionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  @@index([status, createdAt])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   @db.VarChar(80)
+  title     String   @db.VarChar(160)
+  message   String   @db.VarChar(500)
+  readAt    DateTime? @db.DateTime(3)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, readAt, createdAt])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  action      String   @db.VarChar(100)
+  entityType  String   @db.VarChar(80)
+  entityId    String?  @db.VarChar(64)
+  beforeData  Json?
+  afterData   Json?
+  reason      String?  @db.VarChar(1000)
+  ipAddress   String?  @db.VarChar(64)
+  createdAt   DateTime @default(now()) @db.DateTime(3)
+  actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  @@index([action, createdAt])
+  @@index([entityType, entityId])
+}
+
+model AuthSession {
+  id               String   @id @default(cuid())
+  userId           String
+  sessionTokenHash  String   @unique @db.Char(64)
+  expiresAt        DateTime @db.DateTime(3)
+  lastSeenAt       DateTime @default(now()) @db.DateTime(3)
+  revokedAt        DateTime? @db.DateTime(3)
+  createdAt        DateTime @default(now()) @db.DateTime(3)
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, revokedAt, expiresAt])
+}
+
+model PasswordResetToken {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   @unique @db.Char(64)
+  expiresAt  DateTime @db.DateTime(3)
+  usedAt     DateTime? @db.DateTime(3)
+  createdAt  DateTime @default(now()) @db.DateTime(3)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, expiresAt])
+}
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique @db.VarChar(100)
+  value     String   @db.VarChar(500)
+  updatedById String?
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
 }

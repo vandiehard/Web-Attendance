@@ -1,0 +1,33 @@
+import { expect, test } from '@playwright/test';
+
+test('demo-path: register, approve, and login as active user', async ({ page }) => {
+  const suffix = String(Date.now());
+  const email = `presenter-${suffix}@example.com`;
+  const fullName = `Presenter Demo ${suffix}`;
+  await page.goto('/register');
+  await page.getByLabel('Nama lengkap').fill(fullName);
+  await page.getByLabel('NPM').fill(`P${suffix.slice(-8)}`);
+  await page.getByLabel('Kelas').fill('TI-2A');
+  await page.getByLabel('Nomor telepon').fill('081277770000');
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Kata sandi').fill('DemoUser12345');
+  await page.getByRole('button', { name: 'Kirim pendaftaran' }).click();
+  await expect(page.getByText('Pendaftaran berhasil')).toBeVisible();
+  await page.goto('/login');
+  await page.getByLabel('Email').fill('admin@example.com');
+  await page.getByLabel('Kata sandi').fill('ChangeMe123');
+  await page.getByRole('button', { name: 'Masuk' }).click();
+  await expect(page).toHaveURL(/\/admin/);
+  await page.goto('/admin/registrations');
+  const row = page.locator('tr').filter({ hasText: email });
+  await expect(row).toBeVisible();
+  page.once('dialog', (dialog) => void dialog.accept());
+  await row.getByRole('button', { name: 'Setujui' }).click();
+  await expect(row).toBeVisible();
+  await page.goto('/login');
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Kata sandi').fill('DemoUser12345');
+  await page.getByRole('button', { name: 'Masuk' }).click();
+  await expect(page).toHaveURL(/\/app/);
+  await expect(page.getByText('Sesi absensi')).toBeVisible();
+});
